@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Чат</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 30px;
+    }
+
+    h1, h2 {
+      margin-bottom: 20px;
+    }
+
+    button, input, textarea {
+      font-size: 16px;
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      margin: 5px;
+    }
+
+    input, textarea {
+      width: 300px;
+    }
+
+    button {
+      background-color: #444;
+      color: #fff;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background-color: #666;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    #chat-box {
+      background-color: #111;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 15px;
+      width: 90%;
+      max-width: 500px;
+      height: 300px;
+      overflow-y: auto;
+      margin-top: 20px;
+    }
+
+    .message {
+      background-color: #222;
+      margin: 10px 0;
+      padding: 10px;
+      border-radius: 8px;
+      text-align: left;
+      word-wrap: break-word;
+    }
+
+    .username {
+      font-weight: bold;
+      color: #0f0;
+    }
+
+    .message-text {
+      margin-top: 5px;
+    }
+
+    #status {
+      margin-top: 10px;
+      color: #0f0;
+    }
+
+    .reply-btn {
+      background-color: #008800;
+      margin-top: 5px;
+      padding: 5px 10px;
+      font-size: 14px;
+    }
+
+    .radio-group {
+      margin-top: 10px;
+    }
+
+    .radio-group label {
+      margin-right: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Вы хотите остаться анонимным?</h1>
+  <button onclick="selectMode(true)">Да</button>
+  <button onclick="selectMode(false)">Нет</button>
+
+  <div id="name-input" class="hidden">
+    <p>Введите своё имя:</p>
+    <input type="text" id="username" placeholder="Ваше имя">
+    <br>
+    <button onclick="startChat()">Продолжить</button>
+  </div>
+
+  <div id="chat-container" class="hidden">
+    <h2>Чат</h2>
+
+    <div class="radio-group">
+      <label>
+        <input type="radio" name="target" value="channel" checked> В канал
+      </label>
+      <label>
+        <input type="radio" name="target" value="private"> В личку
+      </label>
+    </div>
+
+    <div id="chat-box"></div>
+    <textarea id="message" rows="3" placeholder="Введите сообщение..."></textarea>
+    <br>
+    <input type="file" id="fileInput">
+    <br>
+    <button onclick="sendMessage()">Отправить</button>
+    <p id="status"></p>
+  </div>
+
+  <script>
+    let isAnonymous = true;
+    let username = "";
+    let replyToId = null;
+
+    const BOT_TOKEN = "7307484485:AAGQWTMKVhGKuIjNGViRmt9OcSlnqp3V66g";
+    const CHANNEL_ID = "@mxidamp3";
+    const PRIVATE_ID = "1633654442";
+
+    function getTargetChatId() {
+      const target = document.querySelector('input[name="target"]:checked').value;
+      return target === "channel" ? CHANNEL_ID : PRIVATE_ID;
+    }
+
+    function selectMode(anonymous) {
+      isAnonymous = anonymous;
+      document.querySelector("h1").classList.add("hidden");
+      document.querySelectorAll("button")[0].classList.add("hidden");
+      document.querySelectorAll("button")[1].classList.add("hidden");
+
+      if (anonymous) {
+        username = "Аноним";
+        document.getElementById("chat-container").classList.remove("hidden");
+      } else {
+        document.getElementById("name-input").classList.remove("hidden");
+      }
+    }
+
+    function startChat() {
+      const nameInput = document.getElementById("username").value.trim();
+      if (!nameInput) {
+        alert("Пожалуйста, введите имя.");
+        return;
+      }
+      username = nameInput;
+      document.getElementById("name-input").classList.add("hidden");
+      document.getElementById("chat-container").classList.remove("hidden");
+    }
+
+    function sendMessage() {
+      const message = document.getElementById("message").value.trim();
+      const file = document.getElementById("fileInput").files[0];
+
+      if (!message && !file) {
+        alert("Введите сообщение или прикрепите файл.");
+        return;
+      }
+
+      const targetId = getTargetChatId();
+
+      if (message) {
+        const fullMessage = `Сообщение от ${username}:\n${message}`;
+        const payload = {
+          chat_id: targetId,
+          text: fullMessage
+        };
+
+        if (replyToId) {
+          payload.reply_to_message_id = replyToId;
+        }
+
+        fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        })
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("status").textContent = "Сообщение отправлено!";
+          addMessageToChat(username, message, data.result.message_id);
+          document.getElementById("message").value = "";
+          replyToId = null;
+        })
+        .catch(err => {
+          document.getElementById("status").textContent = "Ошибка при отправке текста.";
+          console.error(err);
+        });
+      }
+
+      if (file) {
+        const formData = new FormData();
+        formData.append("chat_id", targetId);
+        formData.append("caption", `Файл от ${username}`);
+
+        const fileType = file.type;
+        let endpoint = "";
+
+        if (fileType.startsWith("image/")) {
+          formData.append("photo", file);
+          endpoint = "sendPhoto";
+        } else if (fileType.startsWith("audio/")) {
+          formData.append("audio", file);
+          endpoint = "sendAudio";
+        } else if (fileType.startsWith("video/")) {
+          formData.append("video", file);
+          endpoint = "sendVideo";
+        } else {
+          formData.append("document", file);
+          endpoint = "sendDocument";
+        }
+
+        fetch(`https://api.telegram.org/bot${BOT_TOKEN}/${endpoint}`, {
+          method: "POST",
+          body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+          document.getElementById("status").textContent = "Файл отправлен!";
+          addMessageToChat(username, `[файл: ${file.name}]`, data.result.message_id);
+          document.getElementById("fileInput").value = "";
+        })
+        .catch(err => {
+          document.getElementById("status").textContent = "Ошибка при отправке файла.";
+          console.error(err);
+        });
+      }
+    }
+
+    function addMessageToChat(user, text, messageId = null) {
+      const chatBox = document.getElementById("chat-box");
+      const msgDiv = document.createElement("div");
+      msgDiv.classList.add("message");
+
+      msgDiv.innerHTML = `
+        <div class="username">${user}</div>
+        <div class="message-text">${text}</div>
+        ${messageId ? `<button class="reply-btn" onclick="replyToMessage(${messageId})">Ответить</button>` : ""}
+      `;
+
+      chatBox.appendChild(msgDiv);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function replyToMessage(messageId) {
+      replyToId = messageId;
+      document.getElementById("status").textContent = "Вы отвечаете на сообщение #" + messageId;
+    }
+  </script>
+</body>
+</html>
